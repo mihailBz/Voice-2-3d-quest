@@ -1,60 +1,75 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using OpenAI;
 
-namespace OpenAI
+public class WhisperAPI : MonoBehaviour
 {
-    public class WhisperAPI : MonoBehaviour
+    private readonly string fileName = "output.wav";
+    private PythonRunner pythonRunner = new();
+    private GLBImporter importer = new();
+
+    private AudioClip clip;
+    private bool isRecording = false;
+    private OpenAIApi openai = new();
+
+    private void StartRecording()
     {
-        [SerializeField] private TextMeshProUGUI message;
+        isRecording = true;
+        clip = Microphone.Start(Microphone.devices[0], false, 10,
+            44100); // max duration set to 10, will stop on key release
+    }
 
-        private readonly string fileName = "output.wav";
-        
-        private AudioClip clip;
-        private bool isRecording = false;
-        private OpenAIApi openai = new OpenAIApi();
+    private async void EndRecording()
+    {
+        Microphone.End(Microphone.devices[0]);
+        byte[] data = SaveWav.Save(fileName, clip);
 
-        private void StartRecording()
+
+        var req = new CreateAudioTranscriptionsRequest
         {
-            isRecording = true;
-            clip = Microphone.Start(Microphone.devices[0], false, 10, 44100);  // max duration set to 10, will stop on key release
-            message.text = "Listening...";
-        }
+            FileData = new FileData() { Data = data, Name = "audio.wav" },
+            // File = Application.persistentDataPath + "/" + fileName,
+            Model = "whisper-1",
+            Language = "en"
+        };
+        var res = await openai.CreateAudioTranscription(req);
 
-        private async void EndRecording()
+        Debug.Log("Result:");
+        Debug.Log(res.Text);
+        pythonRunner.Run(res.Text);
+        // pythonRunner.Run("book");
+        importer.ImportGLTF("C:/Users/msh/UnityProjects/Voice-2-3d-quest/Assets/Generated Objects/object.glb");
+    }
+
+    private void Update()
+    {
+        // You can use the InputDevice class to get a list of all devices. 
+        // Then, filter it for the right hand controller to check for button presses.
+        var rightHandDevices = new List<UnityEngine.XR.InputDevice>();
+        UnityEngine.XR.InputDevices.GetDevicesAtXRNode(UnityEngine.XR.XRNode.RightHand, rightHandDevices);
+
+        if (rightHandDevices.Count == 1)
         {
-            Microphone.End(Microphone.devices[0]);
-            byte[] data = SaveWav.Save(fileName, clip);
-            
-            message.text = "Transcripting...";
-            
-            var req = new CreateAudioTranscriptionsRequest
+            UnityEngine.XR.InputDevice device = rightHandDevices[0];
+            bool buttonPressed;
+            if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out buttonPressed) &&
+                buttonPressed)
             {
-                FileData = new FileData() {Data = data, Name = "audio.wav"},
-                // File = Application.persistentDataPath + "/" + fileName,
-                Model = "whisper-1",
-                Language = "en"
-            };
-            var res = await openai.CreateAudioTranscription(req);
-            
-            message.text = res.Text;
-            Debug.Log(res.Text);
-        }
-
-        private void Update()
-        {
-            if (isRecording && Input.GetKeyUp(KeyCode.A))
+                if (!isRecording)
+                {
+                    Debug.Log("Start recording (a key pressed)");
+                    StartRecording();
+                }
+            }
+            else if (isRecording)
             {
                 Debug.Log("Stop recording (a key released)");
                 isRecording = false;
                 EndRecording();
-            }
-            else if (!isRecording && Input.GetKeyDown(KeyCode.A))
-            {
-                Debug.Log("Start recording (a key pressed)");
-                StartRecording();
             }
         }
     }
