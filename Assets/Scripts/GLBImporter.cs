@@ -12,7 +12,6 @@ public class GLBImporter
     public void ImportGLTF(string filepath)
     {
         GameObject result = Importer.LoadFromFile(filepath);
-        result.transform.eulerAngles = new Vector3(-90f, 0f, 0f);
 
         // Set position in front of the user
         if (userCamera != null)
@@ -38,6 +37,12 @@ public class GLBImporter
             XRGrabInteractable grabInteractable = result.AddComponent<XRGrabInteractable>();
             grabInteractable.movementType = XRBaseInteractable.MovementType.VelocityTracking;
         }
+        
+        // Load and assign new material
+        Material material = Resources.Load<Material>("Materials/DefaultImportMaterial");
+        Transform child = result.transform.GetChild(0);
+        Renderer renderer = child.GetComponent<Renderer>();
+        renderer.material = material;
     }
 
     private BoxCollider ComputeAndAddBoxCollider(GameObject obj)
