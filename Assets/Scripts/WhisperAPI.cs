@@ -1,13 +1,17 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using OpenAI;
+using UnityEngine.Networking;
 
 public class WhisperAPI : MonoBehaviour
 {
+    public TMP_Text statusTMPText;
     private readonly string fileName = "output.wav";
     private PythonRunner pythonRunner = new();
     private GLBImporter importer = new();
@@ -21,29 +25,78 @@ public class WhisperAPI : MonoBehaviour
         isRecording = true;
         clip = Microphone.Start(Microphone.devices[0], false, 10,
             44100); // max duration set to 10, will stop on key release
+        statusTMPText.text = "Recording...";
     }
 
     private async void EndRecording()
     {
         Microphone.End(Microphone.devices[0]);
         byte[] data = SaveWav.Save(fileName, clip);
+        
+        StartCoroutine(SendRequestCoroutine(data));
+        statusTMPText.text = "Generating...";
 
-
-        var req = new CreateAudioTranscriptionsRequest
-        {
-            FileData = new FileData() { Data = data, Name = "audio.wav" },
-            // File = Application.persistentDataPath + "/" + fileName,
-            Model = "whisper-1",
-            Language = "en"
-        };
-        var res = await openai.CreateAudioTranscription(req);
-
-        Debug.Log("Result:");
-        Debug.Log(res.Text);
-        pythonRunner.Run(res.Text);
-        // pythonRunner.Run("book");
-        importer.ImportGLTF("C:/Users/msh/UnityProjects/Voice-2-3d-quest/Assets/Generated Objects/object.glb");
     }
+    private IEnumerator SendRequestCoroutine(byte[] data)
+    {
+        string endpointUrl = "http://localhost:5000/call_gradio";
+
+        // Create a form and add the audio file data
+        WWWForm form = new WWWForm();
+        form.AddBinaryData("file", data, fileName, "audio/wav");
+
+        // Add additional parameters
+        form.AddField("seed", 0); // Replace 0 with your desired seed value
+        form.AddField("guidance_scale", 15); // Replace 15 with your desired guidance_scale value
+        form.AddField("inference_steps", 64); // Replace 64 with your desired inference_steps value
+
+        // Send the form to the server
+        using (UnityWebRequest request = UnityWebRequest.Post(endpointUrl, form))
+        {
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError(request.error);
+            }
+            else
+            {
+                // Handle the ZIP file response
+                byte[] responseData = request.downloadHandler.data;
+
+                // Extract the ZIP file contents
+                using (MemoryStream zipStream = new MemoryStream(responseData))
+                using (ZipArchive archive = new ZipArchive(zipStream, ZipArchiveMode.Read))
+                {
+                    foreach (ZipArchiveEntry entry in archive.Entries)
+                    {
+                        if (entry.FullName.EndsWith(".glb", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string glbFilePath = Path.Combine(Application.dataPath, "Generated Objects", entry.Name);
+                            entry.ExtractToFile(glbFilePath, true);
+                            importer.ImportGLTF(glbFilePath);
+                        }
+                        else if (entry.FullName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                        {
+                            using (StreamReader reader = new StreamReader(entry.Open()))
+                            {
+                                string transcription = reader.ReadToEnd();
+                                statusTMPText.text = transcription;
+                                StartCoroutine(ClearTextAfterDelay(10));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private IEnumerator ClearTextAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        statusTMPText.text = ""; // Clear the text
+    }
+    
 
     private void Update()
     {
