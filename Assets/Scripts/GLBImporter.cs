@@ -9,17 +9,11 @@ public class GLBImporter
     public float distanceInFrontOfUser = 2.0f; // Define how far in front of the user the object should appear
 
 
-    public void ImportGLTF(string filepath)
+    public void ImportGLTF(string filepath, Vector3 spawnPosition)
     {
         GameObject result = Importer.LoadFromFile(filepath);
 
-        // Set position in front of the user
-        if (userCamera != null)
-        {
-            Vector3 spawnPosition =
-                userCamera.transform.position + userCamera.transform.forward * distanceInFrontOfUser;
-            result.transform.position = spawnPosition;
-        }
+        result.transform.position = spawnPosition;
 
         // Add Rigidbody component
         if (result.GetComponent<Rigidbody>() == null)

@@ -11,7 +11,10 @@ using UnityEngine.Networking;
 
 public class WhisperAPI : MonoBehaviour
 {
+    public Camera userCamera;
+    public float distanceInFrontOfUser = 18.0f;
     public TMP_Text statusTMPText;
+    
     private readonly string fileName = "output.wav";
     private PythonRunner pythonRunner = new();
     private GLBImporter importer = new();
@@ -19,6 +22,7 @@ public class WhisperAPI : MonoBehaviour
     private AudioClip clip;
     private bool isRecording = false;
     private OpenAIApi openai = new();
+    // private Vector3 spawnPosition;
 
     private void StartRecording()
     {
@@ -72,9 +76,12 @@ public class WhisperAPI : MonoBehaviour
                     {
                         if (entry.FullName.EndsWith(".glb", StringComparison.OrdinalIgnoreCase))
                         {
-                            string glbFilePath = Path.Combine(Application.dataPath, "Generated Objects", entry.Name);
+                            string glbFilePath = Path.Combine(Application.dataPath, "Generated Objects", "generated_object.glb");
                             entry.ExtractToFile(glbFilePath, true);
-                            importer.ImportGLTF(glbFilePath);
+                            importer.ImportGLTF(
+                                glbFilePath,
+                                userCamera.transform.position + userCamera.transform.forward * distanceInFrontOfUser
+                                );
                         }
                         else if (entry.FullName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
                         {
@@ -82,7 +89,7 @@ public class WhisperAPI : MonoBehaviour
                             {
                                 string transcription = reader.ReadToEnd();
                                 statusTMPText.text = transcription;
-                                StartCoroutine(ClearTextAfterDelay(10));
+                                // StartCoroutine(ClearTextAfterDelay(10));
                             }
                         }
                     }
